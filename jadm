@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# JADM - Just Another Display Mirror script to easily mirror displays on KDE Plasma. 
+#
+# Author: ZoeWithTheE
+# Version: 1.0
+#
+# This script uses kscreen-doctor to change display settings.
+# It allows you to set a default output display, and then mirror any other
+# display to it without messing up your existing display arrangement.
+#
+# Usage:
+#   jadm set <display>      - Set the default output display.
+#   jadm view <display>     - Mirror the specified display to the output display.
+#   jadm monitor <display>  - Alias for 'view'.
+#   jadm unmirror           - Restore the output display to its original position.
+
+# Configuration
+CONFIG_DIR="$HOME/.config/jadm"
+OUTPUT_DISPLAY_FILE="$CONFIG_DIR/output_display"
+SAVED_POSITION_FILE="$CONFIG_DIR/saved_position"
+
+# Create the configuration directory if it doesn't exist
+mkdir -p "$CONFIG_DIR"
+
+# Set a default output display if not already configured
+if [ ! -f "$OUTPUT_DISPLAY_FILE" ]; then
+    # Find the first available HDMI display and set it as the default
+    DEFAULT_OUTPUT=$(kscreen-doctor -o | grep 'HDMI' | head -n 1 | awk '{print $3}')
+    if [ -z "$DEFAULT_OUTPUT" ]; then
+        # If no HDMI display is found, use the first available display
+        DEFAULT_OUTPUT=$(kscreen-doctor -o | head -n 1 | awk '{print $3}')
+    fi
+    echo "$DEFAULT_OUTPUT" > "$OUTPUT_DISPLAY_FILE"
+fi
+
+# Read the current output display
+OUTPUT_DISPLAY=$(cat "$OUTPUT_DISPLAY_FILE")
+
+# Main script logic
+case "$1" in
+    monitor|view)
+        if [ -z "$2" ]; then
+            echo "Usage: jadm [monitor|view] <display>"
+            echo "Please specify the display to mirror."
+            exit 1
+        fi
+        INPUT_DISPLAY=$2
+
+        # Get the positions of the input and output displays
+        POSITIONS=$(kscreen-doctor -o | sed -r "s/\x1B\[[0-9;]*[mK]//g" | awk -v output="$OUTPUT_DISPLAY" -v input="$INPUT_DISPLAY" '
+            /Output:/ { name = $3 }
+            /Geometry:/ {
+                if (name == output) { print "output", $2 }
+                if (name == input) { print "input", $2 }
+            }
+        ')
+
+        OUTPUT_POS=$(echo "$POSITIONS" | grep 'output' | awk '{print $2}')
+        INPUT_POS=$(echo "$POSITIONS" | grep 'input' | awk '{print $2}')
+
+        if [ -z "$INPUT_POS" ]; then
+            echo "Error: Could not find position for display '$INPUT_DISPLAY'."
+            exit 1
+        fi
+
+        # Save the original position of the output display
+        echo "$OUTPUT_POS" > "$SAVED_POSITION_FILE"
+
+        # Build and execute the kscreen-doctor command to mirror the display
+        echo "Mirroring '$INPUT_DISPLAY' to '$OUTPUT_DISPLAY'..."
+        kscreen-doctor output."$OUTPUT_DISPLAY".enable output."$OUTPUT_DISPLAY".position."$INPUT_POS"
+        ;;
+    unmirror)
+        if [ ! -f "$SAVED_POSITION_FILE" ]; then
+            echo "Error: No saved position to restore."
+            echo "Have you mirrored a display yet?"
+            exit 1
+        fi
+        SAVED_POS=$(cat "$SAVED_POSITION_FILE")
+        echo "Restoring '$OUTPUT_DISPLAY' to its original position..."
+        kscreen-doctor output."$OUTPUT_DISPLAY".enable output."$OUTPUT_DISPLAY".position."$SAVED_POS"
+        ;;
+    set)
+        if [ -z "$2" ]; then
+            echo "Usage: jadm set <display>"
+            echo "Please specify the display to set as the default output."
+            exit 1
+        fi
+        NEW_OUTPUT_DISPLAY=$2
+        echo "$NEW_OUTPUT_DISPLAY" > "$OUTPUT_DISPLAY_FILE"
+        echo "Default output display set to: '$NEW_OUTPUT_DISPLAY'"
+        ;;
+    *)
+        echo "JADM - Just Another Display Mirror script to easily mirror displays on KDE Plasma."
+        echo ""
+        echo "Usage: jadm <command> [display]"
+        echo ""
+        echo "Commands:"
+        echo "  set <display>      - Set the default output display."
+        echo "  view <display>     - Mirror the specified display to the output display."
+        echo "  monitor <display>  - Alias for 'view'."
+        echo "  unmirror           - Restore the output display to its original position."
+        echo ""
+        echo "Example:"
+        echo "  jadm set HDMI-A-1"
+        echo "  jadm view DP-2"
+        exit 1
+        ;;
+esac
