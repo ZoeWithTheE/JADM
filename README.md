@@ -10,7 +10,7 @@ curl -sSL https://raw.githubusercontent.com/ZoeWithTheE/JADM/master/jadm -o ~/.l
 chmod +x ~/.local/bin/jadm
 
 # 3. save it to your bash profile so you can run it without specifying path
-`grep -q 'HOME/.local/bin' ~/.bash_profile || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bash_profile)
+grep -q '$HOME/.local/bin' ~/.bash_profile || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bash_profile
 
 # 4. reload the terminal's bash profile
 source ~/.bash_profile
